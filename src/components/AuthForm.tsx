@@ -5,6 +5,25 @@ import { createClient } from "@/lib/supabase/client";
 
 type Mode = "magic" | "password";
 
+// Supabase Auth returns raw, sometimes cryptic error strings. Translate the
+// ones users actually hit into plain, actionable guidance. The rate-limit case
+// is important: it's a cap on Supabase's email *sender*, not on how many
+// accounts can exist — so we point users at the password flow, which needs no
+// email when confirmation is disabled.
+function friendlyError(raw: string): string {
+  const m = raw.toLowerCase();
+  if (m.includes("rate limit") || m.includes("too many requests")) {
+    return "Email sending is temporarily throttled (a limit on the email service, not on new accounts). Use the Password tab to create an account instantly, or try the magic link again in a few minutes.";
+  }
+  if (m.includes("already registered") || m.includes("already been registered")) {
+    return "That email already has an account. Switch to “Sign in” below.";
+  }
+  if (m.includes("invalid login credentials")) {
+    return "Email or password is incorrect. If you signed up with a magic link, use the Magic link tab instead.";
+  }
+  return raw;
+}
+
 export default function AuthForm() {
   const [mode, setMode] = useState<Mode>("magic");
   const [isSignUp, setIsSignUp] = useState(false);
@@ -24,16 +43,24 @@ export default function AuthForm() {
     e.preventDefault();
     setStatus("loading");
     setMessage("");
+    // One link handles BOTH sign-in and sign-up: shouldCreateUser (the default,
+    // set explicitly here) makes Supabase create the account if the email is
+    // new, or just sign in if it already exists.
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${siteUrl}/auth/callback` },
+      options: {
+        emailRedirectTo: `${siteUrl}/auth/callback`,
+        shouldCreateUser: true,
+      },
     });
     if (error) {
       setStatus("error");
-      setMessage(error.message);
+      setMessage(friendlyError(error.message));
     } else {
       setStatus("sent");
-      setMessage("Check your inbox for a magic sign-in link.");
+      setMessage(
+        "Check your inbox for a sign-in link. It works whether or not you already have an account."
+      );
     }
   }
 
@@ -43,18 +70,24 @@ export default function AuthForm() {
     setMessage("");
 
     if (isSignUp) {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: { emailRedirectTo: `${siteUrl}/auth/callback` },
       });
       if (error) {
         setStatus("error");
-        setMessage(error.message);
+        setMessage(friendlyError(error.message));
+      } else if (data.session) {
+        // Email confirmation is off → Supabase returned a live session, so the
+        // account is ready immediately with no email sent. This is the path to
+        // effectively unlimited sign-ups (no email quota involved).
+        window.location.href = "/dashboard";
       } else {
+        // Email confirmation is on → a verification email was sent.
         setStatus("sent");
         setMessage(
-          "Account created. If email confirmation is on, check your inbox — otherwise you can sign in now."
+          "Account created. Check your inbox to confirm your email, then sign in."
         );
       }
     } else {
@@ -64,7 +97,7 @@ export default function AuthForm() {
       });
       if (error) {
         setStatus("error");
-        setMessage(error.message);
+        setMessage(friendlyError(error.message));
       } else {
         window.location.href = "/dashboard";
       }
