@@ -9,7 +9,7 @@ export const maxDuration = 60;
 
 // How many unscored jobs to process per invocation. Keeps us inside the
 // function time budget (each Groq call ~1s; we run them in small waves).
-const MAX_JOBS_PER_RUN = 24;
+const MAX_JOBS_PER_RUN = 40;
 const CONCURRENCY = 4;
 
 // Run scoring for the signed-in user's profile against jobs not yet matched.

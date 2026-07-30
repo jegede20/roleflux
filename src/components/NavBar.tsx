@@ -5,7 +5,7 @@ export default function NavBar({
   active,
   email,
 }: {
-  active: "dashboard" | "profile";
+  active: "dashboard" | "jobs" | "profile";
   email?: string | null;
 }) {
   const linkBase =
@@ -33,6 +33,16 @@ export default function NavBar({
               }`}
             >
               Board
+            </Link>
+            <Link
+              href="/jobs"
+              className={`${linkBase} ${
+                active === "jobs"
+                  ? "bg-primary/10 text-primary"
+                  : "text-ink-secondary hover:text-ink-primary"
+              }`}
+            >
+              Browse
             </Link>
             <Link
               href="/profile"

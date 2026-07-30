@@ -1,7 +1,7 @@
 import { groq, GROQ_MODEL, parseJsonObject } from "@/lib/groq";
 import type { Job, Profile } from "@/lib/types";
 
-export const MATCH_THRESHOLD = 60;
+export const MATCH_THRESHOLD = 55;
 
 interface ScoreResult {
   score: number;

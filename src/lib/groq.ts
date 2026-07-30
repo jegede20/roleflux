@@ -1,6 +1,8 @@
 import Groq from "groq-sdk";
 
-export const GROQ_MODEL = "llama-3.3-70b-versatile";
+// Groq deprecated llama-3.3-70b-versatile (shutdown 2026-08-16). Migrated to
+// its recommended replacement, which supports the same JSON-mode API.
+export const GROQ_MODEL = "openai/gpt-oss-120b";
 
 let _client: Groq | null = null;
 
