@@ -13,6 +13,44 @@ function truncate(text: string | null | undefined, max: number): string {
   return text.length > max ? text.slice(0, max) + "…" : text;
 }
 
+// Common words that carry no matching signal — dropped from profile keywords so
+// they don't create spurious overlap (e.g. every job mentions "remote").
+const STOPWORDS = new Set([
+  "and", "or", "the", "a", "an", "of", "for", "with", "to", "in", "on", "at",
+  "remote", "junior", "senior", "mid", "lead", "staff", "principal", "engineer",
+  "developer", "manager", "specialist", "role", "job", "work", "team",
+]);
+
+// Break profile roles/skills into a set of lowercase keyword tokens.
+function profileKeywords(profile: Profile): Set<string> {
+  const raw = [...profile.target_roles, ...profile.skills].join(" ");
+  const tokens = raw
+    .toLowerCase()
+    .split(/[^a-z0-9+#.]+/)
+    .map((t) => t.replace(/^[.]+|[.]+$/g, ""))
+    .filter((t) => t.length >= 2 && !STOPWORDS.has(t));
+  return new Set(tokens);
+}
+
+// Cheap, deterministic relevance signal: how much of the profile's vocabulary
+// shows up in a job's title/tags/description. Used to gate out clearly
+// unrelated postings and to rank candidates before spending LLM budget.
+// Returns the number of distinct profile keywords the job matches.
+export function relevanceScore(profile: Profile, job: Job): number {
+  const keywords = profileKeywords(profile);
+  if (keywords.size === 0) return 0;
+
+  const haystack = [job.title, job.tags.join(" "), job.description ?? ""]
+    .join(" ")
+    .toLowerCase();
+
+  let hits = 0;
+  for (const kw of keywords) {
+    if (haystack.includes(kw)) hits++;
+  }
+  return hits;
+}
+
 // Score a single job against a profile. Returns null on any model/parse error
 // so the caller can skip this pairing without aborting the whole batch.
 export async function scoreJobForProfile(

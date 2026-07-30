@@ -1,5 +1,5 @@
 import type { NormalizedJob } from "@/lib/types";
-import { fetchWithTimeout, stripHtml, toIso } from "./shared";
+import { cleanText, fetchWithTimeout, stripHtml, toIso } from "./shared";
 
 // RemoteOK API: https://remoteok.com/api
 // Returns a JSON array whose FIRST element is a legal/notice object (no `id`),
@@ -40,12 +40,12 @@ export async function fetchRemoteOk(): Promise<NormalizedJob[]> {
     .map((j) => ({
       source: "remoteok" as const,
       external_id: String(j.id),
-      title: (j.position ?? "").trim() || "Untitled role",
-      company: j.company?.trim() || null,
+      title: cleanText(j.position) || "Untitled role",
+      company: cleanText(j.company) || null,
       description: stripHtml(j.description),
       tags: Array.isArray(j.tags) ? j.tags.slice(0, 20) : [],
       salary: formatSalary(j.salary_min, j.salary_max),
-      location: j.location?.trim() || "Remote",
+      location: cleanText(j.location) || "Remote",
       url: j.url || (j.slug ? `https://remoteok.com/remote-jobs/${j.slug}` : null),
       posted_at: toIso(j.epoch ?? j.date),
     }));

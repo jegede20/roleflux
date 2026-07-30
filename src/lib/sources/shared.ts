@@ -1,21 +1,44 @@
 import type { NormalizedJob } from "@/lib/types";
 
-// Strip HTML tags to plain text (job descriptions arrive as HTML from most
-// sources). Keeps things readable for the LLM and the detail panel.
-export function stripHtml(html: string | null | undefined): string {
-  if (!html) return "";
-  return html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<\/(p|div|li|br|h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
+// Decode the HTML entities that show up in feed text (titles, companies, and
+// descriptions all arrive HTML-encoded from most sources). Handles the common
+// named entities plus decimal/hex numeric entities like &#38; / &#x26;.
+export function decodeEntities(text: string | null | undefined): string {
+  if (!text) return "";
+  return text
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/&#39;/g, "'")
+    .replace(/&#0*39;|&apos;/g, "'")
     .replace(/&quot;/g, '"')
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) =>
+      String.fromCodePoint(parseInt(hex, 16))
+    )
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)));
+}
+
+// Strip HTML tags to plain text (job descriptions arrive as HTML from most
+// sources). Keeps things readable for the LLM and the detail panel.
+export function stripHtml(html: string | null | undefined): string {
+  if (!html) return "";
+  return decodeEntities(
+    html
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<\/(p|div|li|br|h[1-6])>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+  )
     .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// Clean a short single-line field (title, company, location): decode entities,
+// strip any stray tags, and collapse whitespace.
+export function cleanText(value: string | null | undefined): string {
+  if (!value) return "";
+  return decodeEntities(value.replace(/<[^>]+>/g, ""))
+    .replace(/\s+/g, " ")
     .trim();
 }
 

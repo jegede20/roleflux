@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { scoreJobForProfile, MATCH_THRESHOLD } from "@/lib/matching";
+import {
+  scoreJobForProfile,
+  relevanceScore,
+  MATCH_THRESHOLD,
+} from "@/lib/matching";
 import type { Job, Profile } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -56,9 +60,23 @@ export async function POST() {
     .order("posted_at", { ascending: false, nullsFirst: false })
     .limit(200);
 
-  const candidates = (recentJobs ?? []).filter(
+  // Jobs not yet scored for this profile.
+  const unscored = (recentJobs ?? []).filter(
     (j) => !matchedIds.has(j.id)
   ) as Job[];
+
+  // Relevance pre-filter: only spend LLM budget on jobs whose title/tags/
+  // description actually overlap the profile's roles/skills. This keeps
+  // clearly-unrelated postings off the board and stops junk from clearing the
+  // threshold on a lucky guess. Rank the survivors by overlap (then recency,
+  // preserved from the query order) so the strongest candidates get scored
+  // first within the per-run budget.
+  const candidates = unscored
+    .map((job) => ({ job, relevance: relevanceScore(profile, job) }))
+    .filter((c) => c.relevance > 0)
+    .sort((a, b) => b.relevance - a.relevance)
+    .map((c) => c.job);
+
   const toScore = candidates.slice(0, MAX_JOBS_PER_RUN);
 
   let scored = 0;

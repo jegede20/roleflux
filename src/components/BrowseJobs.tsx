@@ -15,6 +15,9 @@ type Props = {
   savedJobIds: string[];
 };
 
+// Per-job fit result from /api/match/single.
+type Fit = { score: number; reason: string | null; strong: boolean };
+
 export default function BrowseJobs({ initialJobs, savedJobIds }: Props) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -22,6 +25,8 @@ export default function BrowseJobs({ initialJobs, savedJobIds }: Props) {
   const [saved, setSaved] = useState<Set<string>>(new Set(savedJobIds));
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [fits, setFits] = useState<Record<string, Fit>>({});
+  const [checking, setChecking] = useState<Set<string>>(new Set());
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -39,6 +44,38 @@ export default function BrowseJobs({ initialJobs, savedJobIds }: Props) {
       return haystack.includes(q);
     });
   }, [initialJobs, query, source]);
+
+  async function checkFit(job: Job) {
+    setError(null);
+    setChecking((prev) => new Set(prev).add(job.id));
+    try {
+      const res = await fetch("/api/match/single", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job_id: job.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Could not check fit");
+      }
+      setFits((prev) => ({
+        ...prev,
+        [job.id]: {
+          score: data.score,
+          reason: data.reason ?? null,
+          strong: Boolean(data.strong),
+        },
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not check fit");
+    } finally {
+      setChecking((prev) => {
+        const next = new Set(prev);
+        next.delete(job.id);
+        return next;
+      });
+    }
+  }
 
   async function saveToBoard(job: Job) {
     setError(null);
@@ -119,6 +156,8 @@ export default function BrowseJobs({ initialJobs, savedJobIds }: Props) {
           {filtered.map((job) => {
             const isSaved = saved.has(job.id);
             const isSaving = saving.has(job.id);
+            const isChecking = checking.has(job.id);
+            const fit = fits[job.id];
             return (
               <li
                 key={job.id}
@@ -158,7 +197,22 @@ export default function BrowseJobs({ initialJobs, savedJobIds }: Props) {
                   </div>
                 )}
 
-                <div className="mt-auto flex items-center gap-2 pt-1">
+                {fit && (
+                  <div
+                    className={`rounded-md border px-3 py-2 text-sm ${
+                      fit.strong
+                        ? "border-green-300 bg-green-50 text-green-800"
+                        : "border-border bg-background text-ink-secondary"
+                    }`}
+                  >
+                    <p className="font-medium">
+                      {fit.strong ? "Strong match" : "Weaker match"} · {fit.score}%
+                    </p>
+                    {fit.reason && <p className="mt-0.5">{fit.reason}</p>}
+                  </div>
+                )}
+
+                <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
                   {job.url && (
                     <a
                       href={job.url}
@@ -169,6 +223,18 @@ export default function BrowseJobs({ initialJobs, savedJobIds }: Props) {
                       View posting
                     </a>
                   )}
+                  <button
+                    type="button"
+                    disabled={isChecking}
+                    onClick={() => checkFit(job)}
+                    className="rounded-md border border-primary px-3 py-1.5 text-sm font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isChecking
+                      ? "Checking…"
+                      : fit
+                      ? "Recheck fit"
+                      : "Check my fit"}
+                  </button>
                   <button
                     type="button"
                     disabled={isSaved || isSaving}

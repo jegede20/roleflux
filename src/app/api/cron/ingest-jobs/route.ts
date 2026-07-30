@@ -9,7 +9,8 @@ export const maxDuration = 60;
 
 const BATCH_SIZE = 100;
 
-// Vercel Cron hits this every 6 hours (see vercel.json). Also invokable
+// Vercel Cron hits this once a day at 06:00 UTC (see vercel.json), which is
+// what keeps fresh listings flowing into the Browse section. Also invokable
 // manually with the same bearer token for testing / first-run seeding.
 export async function GET(request: Request) {
   // ── Auth: verify the cron secret ──────────────────────────────────────

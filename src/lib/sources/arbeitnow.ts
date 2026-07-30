@@ -1,5 +1,5 @@
 import type { NormalizedJob } from "@/lib/types";
-import { fetchWithTimeout, stripHtml, toIso } from "./shared";
+import { cleanText, fetchWithTimeout, stripHtml, toIso } from "./shared";
 
 // Arbeitnow API: https://www.arbeitnow.com/api/job-board-api
 // Response: { data: [{ slug, company_name, title, description, remote, url,
@@ -32,12 +32,12 @@ export async function fetchArbeitnow(): Promise<NormalizedJob[]> {
     .map((j) => ({
       source: "arbeitnow" as const,
       external_id: j.slug,
-      title: j.title?.trim() || "Untitled role",
-      company: j.company_name?.trim() || null,
+      title: cleanText(j.title) || "Untitled role",
+      company: cleanText(j.company_name) || null,
       description: stripHtml(j.description),
       tags: [...(j.tags ?? []), ...(j.job_types ?? [])].slice(0, 20),
       salary: null, // Arbeitnow does not expose a structured salary field.
-      location: j.location?.trim() || (j.remote ? "Remote" : null),
+      location: cleanText(j.location) || (j.remote ? "Remote" : null),
       url: j.url || null,
       posted_at: toIso(j.created_at),
     }));
