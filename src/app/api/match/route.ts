@@ -16,6 +16,13 @@ export const maxDuration = 60;
 const MAX_JOBS_PER_RUN = 40;
 const CONCURRENCY = 4;
 
+// How wide a slice of the catalog to consider as scan candidates. The relevance
+// pre-filter below is cheap and in-memory, so we pull a large recent window
+// (up to PostgREST's 1000-row page cap) and let the profile's roles/skills
+// decide what's worth spending LLM budget on — rather than only ever seeing the
+// 200 newest listings.
+const CANDIDATE_POOL = 1000;
+
 // Run scoring for the signed-in user's profile against jobs not yet matched.
 // Called from the dashboard ("Scan for jobs") and safe to call repeatedly.
 export async function POST() {
@@ -58,7 +65,7 @@ export async function POST() {
     .from("jobs")
     .select("*")
     .order("posted_at", { ascending: false, nullsFirst: false })
-    .limit(200);
+    .limit(CANDIDATE_POOL);
 
   // Jobs not yet scored for this profile.
   const unscored = (recentJobs ?? []).filter(

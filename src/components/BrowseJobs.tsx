@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Job, JobSource } from "@/lib/types";
+import type { BrowseJob, JobSource } from "@/lib/types";
 
 const SOURCE_LABELS: Record<JobSource, string> = {
   remotive: "Remotive",
@@ -10,8 +10,13 @@ const SOURCE_LABELS: Record<JobSource, string> = {
   remoteok: "RemoteOK",
 };
 
+// How many cards to paint at once. The full (filtered) catalog stays in memory
+// for instant search; we just render it in chunks so a 1000-job list doesn't
+// mount thousands of DOM nodes up front.
+const PAGE_SIZE = 60;
+
 type Props = {
-  initialJobs: Job[];
+  initialJobs: BrowseJob[];
   savedJobIds: string[];
 };
 
@@ -27,6 +32,7 @@ export default function BrowseJobs({ initialJobs, savedJobIds }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [fits, setFits] = useState<Record<string, Fit>>({});
   const [checking, setChecking] = useState<Set<string>>(new Set());
+  const [visible, setVisible] = useState(PAGE_SIZE);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -45,7 +51,16 @@ export default function BrowseJobs({ initialJobs, savedJobIds }: Props) {
     });
   }, [initialJobs, query, source]);
 
-  async function checkFit(job: Job) {
+  // Reset the visible window whenever the filter changes, so a new search
+  // starts from the top instead of deep in a previous result set.
+  useEffect(() => {
+    setVisible(PAGE_SIZE);
+  }, [query, source]);
+
+  const shown = filtered.slice(0, visible);
+  const hasMore = filtered.length > shown.length;
+
+  async function checkFit(job: BrowseJob) {
     setError(null);
     setChecking((prev) => new Set(prev).add(job.id));
     try {
@@ -77,7 +92,7 @@ export default function BrowseJobs({ initialJobs, savedJobIds }: Props) {
     }
   }
 
-  async function saveToBoard(job: Job) {
+  async function saveToBoard(job: BrowseJob) {
     setError(null);
     setSaving((prev) => new Set(prev).add(job.id));
     try {
@@ -152,8 +167,9 @@ export default function BrowseJobs({ initialJobs, savedJobIds }: Props) {
           No jobs match your search. Try a different keyword or source.
         </p>
       ) : (
+        <>
         <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {filtered.map((job) => {
+          {shown.map((job) => {
             const isSaved = saved.has(job.id);
             const isSaving = saving.has(job.id);
             const isChecking = checking.has(job.id);
@@ -252,6 +268,18 @@ export default function BrowseJobs({ initialJobs, savedJobIds }: Props) {
             );
           })}
         </ul>
+        {hasMore && (
+          <div className="mt-4 flex justify-center">
+            <button
+              type="button"
+              onClick={() => setVisible((v) => v + PAGE_SIZE)}
+              className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium text-ink-primary transition hover:border-primary"
+            >
+              Load more ({filtered.length - shown.length} left)
+            </button>
+          </div>
+        )}
+        </>
       )}
     </div>
   );

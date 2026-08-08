@@ -103,6 +103,12 @@ export type BoardCard = {
 // Shape used when normalizing an external listing before upsert.
 export type NormalizedJob = Omit<Job, "id" | "created_at">;
 
+// Lightweight job shape for the Browse list. Omits the heavy `description`
+// field — the cards never render it, and shipping it for hundreds of jobs
+// would bloat the page payload. The full description is re-read server-side
+// (by /api/match/single) only when a user checks fit on one specific job.
+export type BrowseJob = Omit<Job, "description">;
+
 // ---------------------------------------------------------------------------
 // Minimal Database type for @supabase/supabase-js generics.
 // ---------------------------------------------------------------------------

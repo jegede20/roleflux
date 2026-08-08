@@ -2,13 +2,21 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import NavBar from "@/components/NavBar";
 import BrowseJobs from "@/components/BrowseJobs";
-import type { Job, Profile } from "@/lib/types";
+import type { BrowseJob, Profile } from "@/lib/types";
 
 export const metadata = { title: "Browse Jobs · Roleflux" };
 export const dynamic = "force-dynamic";
 
-// How many recent jobs to show in the browse view.
-const BROWSE_LIMIT = 200;
+// Columns shown in the browse list — everything except the heavy `description`
+// blob, which the cards never render. Keeping it out of the query lets us ship
+// the whole catalog to the client cheaply.
+const BROWSE_COLUMNS =
+  "id, source, external_id, title, company, tags, salary, location, url, posted_at, created_at";
+
+// PostgREST caps a single response at 1000 rows by default, so this is the
+// practical page ceiling. It's high enough that the daily ingest's fresh
+// listings all show up; the client paginates them with a "Load more" control.
+const BROWSE_LIMIT = 1000;
 
 export default async function JobsPage() {
   const supabase = createClient();
@@ -26,10 +34,10 @@ export default async function JobsPage() {
   if (!profile) redirect("/profile");
 
   // Read the raw ingested jobs directly, independent of any match score, so
-  // the user always has real listings to browse and apply to.
+  // the user always has real listings to browse and apply to. Newest first.
   const { data: jobs } = await supabase
     .from("jobs")
-    .select("*")
+    .select(BROWSE_COLUMNS)
     .order("posted_at", { ascending: false, nullsFirst: false })
     .limit(BROWSE_LIMIT);
 
@@ -46,7 +54,7 @@ export default async function JobsPage() {
       <NavBar active="jobs" email={user.email} />
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 sm:px-6">
         <BrowseJobs
-          initialJobs={(jobs ?? []) as Job[]}
+          initialJobs={(jobs ?? []) as unknown as BrowseJob[]}
           savedJobIds={savedJobIds}
         />
       </main>

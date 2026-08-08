@@ -117,12 +117,20 @@ export default function KanbanBoard({
       if (!res.ok) {
         setScanMsg(data.error ?? "Scan failed.");
       } else {
-        setScanMsg(
+        const base =
           data.newMatches > 0
             ? `Found ${data.newMatches} new match${
                 data.newMatches === 1 ? "" : "es"
               }.`
-            : "No new strong matches this round."
+            : "No new strong matches this round.";
+        // Each scan scores up to 40 jobs, so tell the user when there's more
+        // of their pool left to check.
+        setScanMsg(
+          data.remaining > 0
+            ? `${base} ${data.remaining} more candidate${
+                data.remaining === 1 ? "" : "s"
+              } — scan again to check them.`
+            : base
         );
         // Refresh server data to pull in newly created cards.
         router.refresh();

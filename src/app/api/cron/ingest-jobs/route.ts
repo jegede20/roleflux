@@ -36,8 +36,12 @@ export async function GET(request: Request) {
     }
   }
 
-  // ── Batched upsert with dedupe on the unique (source, external_id) ─────
-  let inserted = 0;
+  // ── Batched upsert. We MERGE on the unique (source, external_id): new
+  // listings are inserted, and ones we've seen before have their content
+  // (title, company, description, tags, salary, location, url, posted_at)
+  // refreshed. The row's id and created_at are preserved by the conflict
+  // update, so existing matches/applications keep pointing at the same job.
+  let upserted = 0;
   const upsertErrors: string[] = [];
 
   for (let i = 0; i < allJobs.length; i += BATCH_SIZE) {
@@ -46,7 +50,7 @@ export async function GET(request: Request) {
       .from("jobs")
       .upsert(batch, {
         onConflict: "source,external_id",
-        ignoreDuplicates: true,
+        ignoreDuplicates: false,
         count: "exact",
       });
 
@@ -54,14 +58,14 @@ export async function GET(request: Request) {
       console.error("[ingest] batch upsert error:", error.message);
       upsertErrors.push(error.message);
     } else {
-      inserted += count ?? 0;
+      upserted += count ?? 0;
     }
   }
 
   const summary = {
     ok: true,
     fetched: allJobs.length,
-    inserted,
+    upserted,
     sources: results.map((r) => ({
       source: r.source,
       ok: r.ok,

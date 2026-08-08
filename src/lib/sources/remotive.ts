@@ -19,7 +19,7 @@ interface RemotiveJob {
 
 export async function fetchRemotive(): Promise<NormalizedJob[]> {
   const res = await fetchWithTimeout(
-    "https://remotive.com/api/remote-jobs?limit=100"
+    "https://remotive.com/api/remote-jobs?limit=300"
   );
   if (!res.ok) throw new Error(`Remotive responded ${res.status}`);
 
