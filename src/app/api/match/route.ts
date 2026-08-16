@@ -5,16 +5,22 @@ import {
   relevanceScore,
   MATCH_THRESHOLD,
 } from "@/lib/matching";
-import type { Job, Profile } from "@/lib/types";
+import type { Application, BoardCard, Job, Match, Profile } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // How many unscored jobs to process per invocation. Keeps us inside the
-// function time budget (each Groq call ~1s; we run them in small waves).
-const MAX_JOBS_PER_RUN = 40;
-const CONCURRENCY = 4;
+// function time budget (each Groq call ~1-several s; we run them in waves).
+const MAX_JOBS_PER_RUN = 24;
+const CONCURRENCY = 6;
+
+// Hard wall-clock budget for the scoring loop. We stop starting new waves once
+// this is exceeded and return cleanly, so the platform never kills the function
+// mid-response (which would send the client a non-JSON timeout page and surface
+// as a spurious "Scan failed"). Kept comfortably under maxDuration.
+const TIME_BUDGET_MS = 40_000;
 
 // How wide a slice of the catalog to consider as scan candidates. The relevance
 // pre-filter below is cheap and in-memory, so we pull a large recent window
@@ -26,6 +32,7 @@ const CANDIDATE_POOL = 1000;
 // Run scoring for the signed-in user's profile against jobs not yet matched.
 // Called from the dashboard ("Scan for jobs") and safe to call repeatedly.
 export async function POST() {
+  const started = Date.now();
   const supabase = createClient();
   const {
     data: { user },
@@ -88,10 +95,15 @@ export async function POST() {
 
   let scored = 0;
   let created = 0;
+  let processed = 0;
 
-  // Process in small concurrent waves.
+  // Process in small concurrent waves, stopping if we run out of time budget.
   for (let i = 0; i < toScore.length; i += CONCURRENCY) {
+    if (Date.now() - started > TIME_BUDGET_MS) break;
+
     const wave = toScore.slice(i, i + CONCURRENCY);
+    processed += wave.length;
+
     const results = await Promise.all(
       wave.map(async (job) => {
         const result = await scoreJobForProfile(profile, job);
@@ -129,11 +141,55 @@ export async function POST() {
     }
   }
 
+  // Return the caller's full, authoritative board so the client can update
+  // instantly without a page reload. Scoped to this profile (derived from the
+  // authenticated user), so there's no cross-account leakage. Mirrors the
+  // dashboard's server-side card assembly.
+  const cards = await buildBoardCards(admin, profile.id);
+
   return NextResponse.json({
     ok: true,
     candidates: candidates.length,
     scored,
     newMatches: created,
-    remaining: Math.max(0, candidates.length - toScore.length),
+    remaining: Math.max(0, candidates.length - processed),
+    cards,
   });
+}
+
+// Assemble the Kanban board cards for one profile: each application joined with
+// its job, plus any match score. Identical shape to what the dashboard renders.
+async function buildBoardCards(
+  admin: ReturnType<typeof createServiceClient>,
+  profileId: string
+): Promise<BoardCard[]> {
+  const { data: applications } = await admin
+    .from("applications")
+    .select("*, job:jobs(*)")
+    .eq("profile_id", profileId)
+    .order("updated_at", { ascending: false });
+
+  const { data: matches } = await admin
+    .from("matches")
+    .select("job_id, match_score, match_reason")
+    .eq("profile_id", profileId);
+
+  const matchByJob = new Map<string, Pick<Match, "match_score" | "match_reason">>();
+  for (const m of matches ?? []) {
+    matchByJob.set(m.job_id, {
+      match_score: m.match_score,
+      match_reason: m.match_reason,
+    });
+  }
+
+  return ((applications ?? []) as unknown as (Application & { job: Job | null })[])
+    .filter((a) => a.job)
+    .map((a) => {
+      const { job, ...application } = a;
+      return {
+        application: application as Application,
+        job: job as Job,
+        match: matchByJob.get(a.job_id) ?? null,
+      };
+    });
 }

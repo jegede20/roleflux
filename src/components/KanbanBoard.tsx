@@ -113,26 +113,38 @@ export default function KanbanBoard({
     setScanMsg("");
     try {
       const res = await fetch("/api/match", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) {
-        setScanMsg(data.error ?? "Scan failed.");
+      // Parse defensively: a timed-out / errored function can return a non-JSON
+      // body, and calling res.json() on that throws. We'd rather show a clear
+      // message than a generic failure.
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data) {
+        setScanMsg(data?.error ?? "Scan failed. Please try again.");
+        return;
+      }
+
+      const base =
+        data.newMatches > 0
+          ? `Found ${data.newMatches} new match${
+              data.newMatches === 1 ? "" : "es"
+            }.`
+          : "No new strong matches this round.";
+      // Each scan scores a limited batch, so tell the user when there's more
+      // of their pool left to check.
+      setScanMsg(
+        data.remaining > 0
+          ? `${base} ${data.remaining} more candidate${
+              data.remaining === 1 ? "" : "s"
+            } — scan again to check them.`
+          : base
+      );
+
+      // The endpoint returns the caller's full, authoritative board. Update
+      // state directly so new matches appear instantly — no page reload needed.
+      if (Array.isArray(data.cards)) {
+        setCards(data.cards as BoardCard[]);
       } else {
-        const base =
-          data.newMatches > 0
-            ? `Found ${data.newMatches} new match${
-                data.newMatches === 1 ? "" : "es"
-              }.`
-            : "No new strong matches this round.";
-        // Each scan scores up to 40 jobs, so tell the user when there's more
-        // of their pool left to check.
-        setScanMsg(
-          data.remaining > 0
-            ? `${base} ${data.remaining} more candidate${
-                data.remaining === 1 ? "" : "s"
-              } — scan again to check them.`
-            : base
-        );
-        // Refresh server data to pull in newly created cards.
+        // Fallback for any older response without cards.
         router.refresh();
       }
     } catch {
