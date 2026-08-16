@@ -20,7 +20,7 @@ tracker.
 | Drag & drop      | `@dnd-kit/core`                                               |
 | Hosting / infra  | Vercel (hosting, serverless functions, Cron Jobs)             |
 | Database / auth  | Supabase (Postgres, Auth via email + magic link, Storage)    |
-| AI               | Groq API — model `llama-3.3-70b-versatile`                    |
+| AI               | Groq API — model `openai/gpt-oss-120b`                        |
 | Job sources      | Remotive, Arbeitnow, RemoteOK (all free, no key required)     |
 | File parsing     | `pdf-parse` (PDF), `mammoth` (DOCX)                           |
 | PWA              | Manual `manifest.json` + service worker                       |
